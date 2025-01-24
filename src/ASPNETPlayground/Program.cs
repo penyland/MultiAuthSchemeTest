@@ -36,7 +36,14 @@ builder.Services.AddAuthentication(options =>
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    var bearer1Policy = new AuthorizationPolicyBuilder("Bearer1").RequireAuthenticatedUser().Build();
+    options.AddPolicy("Bearer1", bearer1Policy);
+
+    var bearer2Policy = new AuthorizationPolicyBuilder("Bearer2").RequireAuthenticatedUser().Build();
+    options.AddPolicy("Bearer2", bearer2Policy);
+});
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
@@ -57,7 +64,7 @@ var summaries = new[]
     "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
 };
 
-app.MapGet("/weatherforecast", [Authorize(AuthenticationSchemes = "Bearer1, Bearer2")] () =>
+app.MapGet("/weatherforecast", () =>
 {
     var forecast = Enumerable.Range(1, 5).Select(index =>
         new WeatherForecast
