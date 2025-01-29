@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.JsonWebTokens;
 
@@ -7,33 +9,15 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddAuthentication(options =>
 {
-    options.DefaultScheme = "WhichAuthDoWeUse";
-    options.DefaultAuthenticateScheme = "WhichAuthDoWeUse";
+    options.DefaultScheme = "defaultScheme";
+    options.DefaultAuthenticateScheme = "defaultScheme";
 })
     .AddJwtBearer("Bearer1", "", options => { options.IncludeErrorDetails = true; })
     .AddJwtBearer("Bearer2", "", options => { options.IncludeErrorDetails = true; })
-    .AddPolicyScheme("WhichAuthDoWeUse", "", options =>
+    .AddMultipleBearerPolicySchemes(options =>
     {
-        options.ForwardDefaultSelector = context =>
-        {
-            var authorization = context.Request.Headers.Authorization.ToString();
-            if (!string.IsNullOrEmpty(authorization) && authorization.StartsWith("Bearer "))
-            {
-                var token = authorization["Bearer ".Length..].Trim();
-                var jwtHandler = new JsonWebTokenHandler();
-
-                if (jwtHandler.CanReadToken(token))
-                {
-                    var issuer = jwtHandler.ReadJsonWebToken(token).Issuer;
-                    if (issuer == "Test2")
-                    {
-                        return "Bearer2";
-                    }
-                }
-            }
-
-            return "Bearer1";
-        };
+        options.IssuerSchemeMapping.Add("Test1", "Bearer1");
+        options.IssuerSchemeMapping.Add("Test2", "Bearer2");
     });
 
 builder.Services.AddAuthorization(options =>
@@ -84,4 +68,41 @@ app.Run();
 internal record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
 {
     public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+}
+
+internal static class Extensions
+{
+    public static AuthenticationBuilder AddMultipleBearerPolicySchemes(this AuthenticationBuilder builder, Action<MultipleBearerPolicySchemeOptions>? configure = null)
+    {
+        var options = new MultipleBearerPolicySchemeOptions();
+        configure?.Invoke(options);
+
+        return builder.AddPolicyScheme("defaultScheme", "displayName", configureOptions =>
+        {
+            configureOptions.ForwardDefaultSelector = context =>
+            {
+                var authorization = context.Request.Headers.Authorization.ToString();
+                if (!string.IsNullOrEmpty(authorization) && authorization.StartsWith("Bearer "))
+                {
+                    var token = authorization["Bearer ".Length..].Trim();
+                    var jwtHandler = new JsonWebTokenHandler();
+                    if (jwtHandler.CanReadToken(token))
+                    {
+                        var issuer = jwtHandler.ReadJsonWebToken(token).Issuer;
+                        var scheme = options?.IssuerSchemeMapping[issuer] ?? JwtBearerDefaults.AuthenticationScheme;
+                        return scheme;
+                    }
+                }
+
+                return JwtBearerDefaults.AuthenticationScheme;
+            };
+        });
+    }
+}
+
+internal class MultipleBearerPolicySchemeOptions
+{
+    public string DefaultSelectorScheme { get; set; } = "default";
+
+    public IDictionary<string, string> IssuerSchemeMapping { get; set; } = new Dictionary<string, string>();
 }
